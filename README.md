@@ -2,6 +2,15 @@
 
 AI-powered cloud technology and IT consulting assistant built with FastAPI, Next.js, and Claude AI.
 
+## Live Demo
+
+| Service  | URL                                                                  |
+|----------|----------------------------------------------------------------------|
+| Frontend | https://frontend-lemon-two-26.vercel.app                             |
+| Backend  | https://sparkling-contentment-production.up.railway.app              |
+| API Docs | https://sparkling-contentment-production.up.railway.app/docs         |
+| Health   | https://sparkling-contentment-production.up.railway.app/api/health   |
+
 ## Tech Stack
 
 | Layer     | Technology                          |
@@ -131,5 +140,94 @@ npm test
 
 ## Deployment
 
-- **Frontend**: Vercel (see `frontend/vercel.json`)
-- **Backend**: Railway (see `backend/railway.json`)
+The app is deployed with **Railway** (backend) and **Vercel** (frontend). Below are step-by-step instructions for a fresh deployment.
+
+### Prerequisites
+
+- [Railway CLI](https://docs.railway.com/guides/cli) installed and authenticated (`railway login`)
+- [Vercel CLI](https://vercel.com/docs/cli) installed and authenticated (`vercel login`)
+- An [Anthropic API key](https://console.anthropic.com/)
+
+### 1. Deploy the Backend (Railway)
+
+```bash
+cd backend
+
+# Initialize a new Railway project
+railway init
+
+# Deploy the service (creates the service automatically)
+railway up --detach
+
+# Link the newly created service
+railway service <service-name>
+
+# Set environment variables
+railway variables set ANTHROPIC_API_KEY=<your-api-key>
+railway variables set MODEL_NAME=claude-haiku-4-5-20251001
+railway variables set MAX_TOKENS=1024
+railway variables set TEMPERATURE=0.7
+railway variables set DEBUG=false
+
+# Generate a public domain
+railway domain
+```
+
+Note the Railway domain URL (e.g. `https://<project>-production.up.railway.app`). Verify the backend is running:
+
+```bash
+curl https://<your-railway-domain>/api/health
+```
+
+### 2. Deploy the Frontend (Vercel)
+
+```bash
+cd frontend
+
+# Deploy to production (follow the prompts to create a new project)
+vercel --prod
+
+# Set the backend URL as an environment variable
+echo "https://<your-railway-domain>" | vercel env add NEXT_PUBLIC_API_URL production
+
+# Redeploy so the frontend picks up the new env var
+vercel --prod
+```
+
+Note the Vercel production URL from the output.
+
+### 3. Configure CORS
+
+Update Railway to allow requests from the Vercel frontend:
+
+```bash
+cd backend
+railway variables set ALLOWED_ORIGINS=https://<your-vercel-domain>
+```
+
+Railway will automatically redeploy with the new variable.
+
+### 4. Verify
+
+- Open the Vercel frontend URL in your browser
+- Ask a question to confirm the backend responds
+- Check the health endpoint: `https://<your-railway-domain>/api/health`
+
+### Environment Variables Reference
+
+**Backend (Railway)**
+
+| Variable          | Description                     | Example                            |
+|-------------------|---------------------------------|------------------------------------|
+| `ANTHROPIC_API_KEY` | Anthropic API key             | `sk-ant-api03-...`                 |
+| `MODEL_NAME`      | Claude model to use             | `claude-haiku-4-5-20251001`        |
+| `MAX_TOKENS`      | Max response tokens             | `1024`                             |
+| `TEMPERATURE`     | Sampling temperature            | `0.7`                              |
+| `ALLOWED_ORIGINS` | CORS allowed origins            | `https://your-app.vercel.app`      |
+| `DEBUG`           | Enable debug logging            | `false`                            |
+
+**Frontend (Vercel)**
+
+| Variable              | Description          | Example                                          |
+|-----------------------|----------------------|--------------------------------------------------|
+| `NEXT_PUBLIC_API_URL` | Backend API base URL | `https://your-project-production.up.railway.app`  |

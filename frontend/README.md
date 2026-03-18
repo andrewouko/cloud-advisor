@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CloudAdvisor Frontend
+
+Next.js 16 frontend for CloudAdvisor — an AI-powered cloud consulting chat interface.
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router, Turbopack)
+- **UI**: React 19, Tailwind CSS 4, `@tailwindcss/typography`
+- **State**: TanStack React Query v5 (server state, caching, refetching)
+- **Markdown**: `react-markdown` with `react-syntax-highlighter` for code blocks
+- **Testing**: Vitest, React Testing Library, jsdom
+- **Linting**: ESLint with `eslint-config-next`
+
+## Project Structure
+
+```
+frontend/
+├── app/                    # Next.js App Router (layout, page, global styles)
+├── components/
+│   ├── chat/               # ChatWindow, ChatMessage, ChatInput, TypingIndicator
+│   ├── history/            # HistorySidebar, HistoryItem
+│   ├── layout/             # Header
+│   └── ui/                 # EmptyState, ErrorBanner, Shimmer
+├── hooks/
+│   ├── useChat.ts          # Chat submission, streaming, query management
+│   └── useHistory.ts       # Conversation history CRUD
+├── lib/
+│   ├── api.ts              # Backend API client
+│   ├── providers.tsx       # React Query provider setup
+│   └── utils.ts            # Shared utilities
+├── types/
+│   └── index.ts            # TypeScript interfaces
+├── tests/                  # Vitest test suite
+├── vercel.json             # Vercel deployment config
+└── Dockerfile              # Container build for Docker Compose
+```
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 22+
+- Backend running at `http://localhost:8000` (see [backend README](../backend/))
+
+### Development
 
 ```bash
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Runs at `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable              | Description          | Default                  |
+|-----------------------|----------------------|--------------------------|
+| `NEXT_PUBLIC_API_URL` | Backend API base URL | `http://localhost:8000`  |
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Command          | Description                  |
+|------------------|------------------------------|
+| `npm run dev`    | Start dev server (Turbopack) |
+| `npm run build`  | Production build             |
+| `npm start`      | Serve production build       |
+| `npm run lint`   | Run ESLint                   |
+| `npm test`       | Run tests (single run)       |
+| `npm run test:watch` | Run tests in watch mode  |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployed to **Vercel**. See the [deployment guide](../README.md#deployment) in the root README.

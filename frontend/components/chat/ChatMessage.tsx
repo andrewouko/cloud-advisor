@@ -71,7 +71,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         </svg>
       </div>
 
-      <div className="flex max-w-[75%] flex-col gap-1">
+      <div className="flex max-w-[90%] flex-col gap-1">
         <div className="prose prose-sm max-w-none rounded-2xl rounded-tl-md border border-gray-200 bg-white px-4 py-3 shadow-sm text-[#111827]">
           <ReactMarkdown
             components={{
