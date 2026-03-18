@@ -13,12 +13,14 @@ AI-powered cloud technology and IT consulting assistant built with FastAPI, Next
 
 ## Tech Stack
 
-| Layer     | Technology                          |
-|-----------|-------------------------------------|
-| Frontend  | Next.js 16, React 19, Tailwind CSS 4 |
-| Backend   | FastAPI, Python 3.11, Pydantic v2   |
-| AI        | Anthropic Claude (Haiku 4.5)        |
-| State     | React Query (client), in-memory (server) |
+| Layer      | Technology                           |
+|------------|--------------------------------------|
+| Frontend   | Next.js 16, React 19, Tailwind CSS 4 |
+| Backend    | FastAPI, Python 3.11, Pydantic v2    |
+| AI         | Anthropic Claude (Haiku 4.5)         |
+| Database   | PostgreSQL 16 (async via SQLAlchemy) |
+| Cache      | Redis 7 (response cache + rate limit)|
+| State      | React Query (client)                 |
 
 ## Project Structure
 
@@ -26,16 +28,21 @@ AI-powered cloud technology and IT consulting assistant built with FastAPI, Next
 cloud-advisor/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI app factory
-│   │   ├── config.py            # Pydantic settings
+│   │   ├── main.py              # FastAPI app factory + lifespan
+│   │   ├── config.py            # Pydantic settings (DB, Redis, AI)
 │   │   ├── exceptions.py        # Custom exception handlers
 │   │   ├── routers/             # API route handlers
 │   │   │   ├── query.py         # POST /api/query
 │   │   │   ├── history.py       # GET/DELETE /api/history
 │   │   │   └── health.py        # GET /api/health
+│   │   ├── models/
+│   │   │   └── conversation.py  # SQLAlchemy ORM model
 │   │   ├── services/
-│   │   │   ├── claude_service.py # Anthropic SDK integration
-│   │   │   └── history_service.py # In-memory conversation store
+│   │   │   ├── claude_service.py      # Anthropic SDK integration
+│   │   │   ├── history_service.py     # PostgreSQL conversation store
+│   │   │   ├── cache_service.py       # Redis caching + rate limiting
+│   │   │   ├── validation_service.py  # AI response validation
+│   │   │   └── database.py            # Async engine + session factory
 │   │   ├── schemas/             # Request/response models
 │   │   └── prompts/             # System prompt configuration
 │   ├── tests/                   # Pytest test suite
@@ -52,31 +59,67 @@ cloud-advisor/
 │   ├── lib/                     # API client, utilities
 │   ├── types/                   # TypeScript interfaces
 │   └── Dockerfile
-└── docker-compose.yml
+└── docker-compose.yml           # Full stack: backend + frontend + postgres + redis
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 22+
-- Anthropic API key
+- **Docker & Docker Compose** (recommended — runs everything with one command)
+- Python 3.11+ (only needed for running without Docker)
+- Node.js 22+ (only needed for running without Docker)
+- An [Anthropic API key](https://console.anthropic.com/)
 
-### Backend
+### Option 1: Docker Compose (recommended)
+
+This is the simplest way to run the full stack. Docker Compose starts PostgreSQL, Redis, the backend, and the frontend in one command.
+
+```bash
+cp backend/.env.example backend/.env
+# Edit backend/.env and set ANTHROPIC_API_KEY=<your-key>
+
+docker compose up --build
+```
+
+| Service    | URL                        |
+|------------|----------------------------|
+| Frontend   | http://localhost:3000       |
+| Backend    | http://localhost:8000       |
+| API Docs   | http://localhost:8000/docs  |
+| PostgreSQL | localhost:5432              |
+| Redis      | localhost:6379              |
+
+To stop everything: `docker compose down` (add `-v` to also remove database volumes).
+
+### Option 2: Manual Setup
+
+Run PostgreSQL and Redis yourself (e.g. via Homebrew, native install, or standalone Docker containers), then start the backend and frontend separately.
+
+**Start the infrastructure services:**
+
+```bash
+# Using Docker for just the databases (if not installed natively)
+docker run -d --name cloudadvisor-pg -p 5432:5432 \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=cloudadvisor \
+  postgres:16-alpine
+
+docker run -d --name cloudadvisor-redis -p 6379:6379 \
+  redis:7-alpine
+```
+
+**Start the backend:**
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Add your ANTHROPIC_API_KEY to .env
+# Edit .env — set ANTHROPIC_API_KEY, DATABASE_URL, and REDIS_URL
 uvicorn app.main:app --reload
 ```
 
-Backend runs at `http://localhost:8000`. API docs at `http://localhost:8000/docs`.
-
-### Frontend
+**Start the frontend:**
 
 ```bash
 cd frontend
@@ -85,26 +128,121 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Frontend runs at `http://localhost:3000`.
+> **Note:** The backend runs in degraded mode if Redis is unavailable — caching and rate limiting are simply disabled. PostgreSQL is required for conversation history.
 
-### Docker (recommended)
+## AI Configuration
 
-```bash
-cp backend/.env.example backend/.env
-# Add your ANTHROPIC_API_KEY to backend/.env
-docker compose up --build
-```
+### Model Selection
 
-Frontend: `http://localhost:3000` | Backend: `http://localhost:8000`
+CloudAdvisor uses **Claude Haiku 4.5** (`claude-haiku-4-5-20251001`) as its default model. Haiku was chosen for this use case because:
+
+- **Low latency** — consulting responses feel conversational at ~1–2s, which matters for a chat-style UI
+- **Cost efficiency** — significantly cheaper per token than Sonnet/Opus, making it practical for a demo with no auth/billing
+- **Sufficient quality** — cloud/IT consulting responses are well within Haiku's capability; the structured system prompt compensates for the smaller model
+
+The model is configurable via the `MODEL_NAME` environment variable, so switching to Sonnet or Opus requires no code change.
+
+### Token Limit (`MAX_TOKENS=1024`)
+
+Set to 1024 to keep responses focused and concise. Cloud consulting answers benefit from structured brevity — bullet points, tables, and step-by-step guides — rather than long-form prose. This also controls cost per request and keeps response times low. The system prompt reinforces this by instructing the model to use headings and bullet points.
+
+### Temperature (`TEMPERATURE=0.7`)
+
+Set to 0.7 as a balance between:
+
+- **Factual accuracy** (lower temperature) — important for cloud architecture advice, migration steps, and security recommendations
+- **Natural variation** (higher temperature) — avoids robotic, repetitive phrasing across similar questions
+
+A temperature of 0.0 would produce deterministic but monotone answers. A temperature of 1.0 would risk hallucinated recommendations. 0.7 provides variety in phrasing while keeping technical content reliable.
+
+### System Prompt
+
+The system prompt (`backend/app/prompts/system_prompt.py`) establishes CloudAdvisor as a specialist in cloud technology and IT solutions with a focus on Google Cloud. It includes:
+
+- A defined set of expertise areas (migration, security, GCP, Workspace, cost optimisation, etc.)
+- Response formatting rules: headings (`##`), bullet points, comparison tables, estimated timelines
+- Guardrails: acknowledge out-of-scope questions, avoid jargon, provide actionable guidance
+
+### Response Validation
+
+Before returning a response to the user, the `ValidationService` checks:
+
+| Check              | What it catches                                          |
+|--------------------|----------------------------------------------------------|
+| Minimum length     | Empty or trivially short responses                       |
+| Refusal detection  | Responses that say "I cannot help" instead of answering  |
+| Domain relevance   | Responses that stray from cloud/IT topics                |
+| Hallucinated URLs  | URLs to domains not in an approved whitelist              |
+| Truncation         | Unclosed markdown code fences (incomplete output)        |
+
+If validation fails, the query router retries the Claude API call up to 2 more times. If all attempts fail validation, the response is served anyway (a potentially imperfect answer is better than no answer).
+
+## Data Architecture
+
+### PostgreSQL — Conversation History
+
+PostgreSQL stores all conversation history persistently, replacing the initial in-memory `OrderedDict` implementation.
+
+**`conversations` table:**
+
+| Column         | Type                     | Description                            |
+|----------------|--------------------------|----------------------------------------|
+| `id`           | `VARCHAR(36)` PK         | UUID generated per conversation        |
+| `question`     | `TEXT`                   | The user's original question           |
+| `answer`       | `TEXT`                   | Claude's markdown response             |
+| `model`        | `VARCHAR(100)`           | Model ID that generated the response   |
+| `input_tokens` | `INTEGER`                | Tokens consumed by the prompt          |
+| `output_tokens`| `INTEGER`                | Tokens consumed by the response        |
+| `timestamp`    | `TIMESTAMPTZ`            | When the conversation occurred (UTC)   |
+
+Tables are auto-created on startup via SQLAlchemy's `create_all`. The async engine uses `asyncpg` for non-blocking database access that matches FastAPI's async request handling. The `DATABASE_URL` is automatically normalised at startup — if a provider (e.g. Railway) supplies `postgresql://`, it is rewritten to `postgresql+asyncpg://`.
+
+**Why PostgreSQL over the in-memory store:**
+
+- Conversations survive restarts and redeployments
+- Token usage tracking enables cost monitoring
+- Pagination queries are handled by the database, not Python
+- Standard tooling for backups, monitoring, and scaling
+
+### Redis — Response Cache and Rate Limiting
+
+Redis serves two purposes:
+
+**1. Response caching (1-hour TTL)**
+
+Identical questions (normalised to lowercase, hashed with SHA-256) return cached responses instantly without calling the Claude API. This reduces API costs and improves latency for repeated questions.
+
+| Key pattern                    | Value                | TTL    |
+|--------------------------------|----------------------|--------|
+| `cache:response:<hash16>`      | JSON: content, model, tokens | 1 hour |
+
+**2. Per-IP rate limiting (20 requests / 60-second window)**
+
+A sliding window counter per client IP prevents abuse and controls API spend. When the limit is exceeded, the API returns `429 Too Many Requests`.
+
+| Key pattern              | Value         | TTL       |
+|--------------------------|---------------|-----------|
+| `ratelimit:<client_ip>`  | Request count | 60 seconds|
+
+**Why Redis:**
+
+- Sub-millisecond lookups for cache hits
+- Built-in key expiry handles TTL without cleanup logic
+- Atomic `INCR` + `EXPIRE` provides simple, race-condition-free rate limiting
+- Graceful degradation — if Redis is unavailable, the app runs without caching or rate limiting
+
+**Why both PostgreSQL and Redis (not just one):**
+
+PostgreSQL and Redis solve different problems. PostgreSQL provides durable, queryable storage for conversation history — data that must survive restarts and support pagination. Redis provides ephemeral, high-speed storage for cache entries and rate limit counters — data that is disposable and time-bounded. Using Redis for history would lose data on restart; using PostgreSQL for rate limiting would add unnecessary latency to every request.
 
 ## API Endpoints
 
-| Method   | Endpoint        | Description                        |
-|----------|-----------------|------------------------------------|
-| `POST`   | `/api/query`    | Submit a question, get AI response |
-| `GET`    | `/api/history`  | Paginated conversation history     |
-| `DELETE` | `/api/history`  | Clear all history                  |
-| `GET`    | `/api/health`   | Health check                       |
+| Method   | Endpoint        | Description                                        |
+|----------|-----------------|----------------------------------------------------|
+| `POST`   | `/api/query`    | Submit a question, get AI response (cached if available) |
+| `GET`    | `/api/history`  | Paginated conversation history                     |
+| `DELETE` | `/api/history`  | Clear all history                                  |
+| `GET`    | `/api/health`   | Health check (includes DB and Redis status)        |
 
 ### Example Request
 
@@ -112,6 +250,20 @@ Frontend: `http://localhost:3000` | Backend: `http://localhost:8000`
 curl -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
   -d '{"question": "How do I migrate to Google Workspace?"}'
+```
+
+### Example Response
+
+```json
+{
+  "id": "a1b2c3d4-...",
+  "question": "How do I migrate to Google Workspace?",
+  "answer": "## Migration Strategy\n\n...",
+  "timestamp": "2026-03-18T10:30:00Z",
+  "model": "claude-haiku-4-5-20251001",
+  "tokens_used": 342,
+  "cached": false
+}
 ```
 
 ## Testing
@@ -123,6 +275,12 @@ cd backend
 pytest -v
 ```
 
+Tests use mock services (no PostgreSQL or Redis required). The test suite includes:
+- Query router tests (success, validation, error cases)
+- History service tests (CRUD, pagination)
+- Health endpoint tests
+- Response validation service tests (13 cases covering all checks)
+
 ### Frontend
 
 ```bash
@@ -132,15 +290,18 @@ npm test
 
 ## Architecture Decisions
 
-- **In-memory history**: OrderedDict with LRU eviction (max 100 items). Suitable for demo; production would use PostgreSQL/Redis.
+- **PostgreSQL for history**: Persistent, queryable conversation storage with token tracking. Replaces the initial in-memory `OrderedDict`.
+- **Redis for cache + rate limiting**: Reduces API costs via response caching; protects budget via per-IP rate limiting. Gracefully degrades if unavailable.
+- **Response validation**: Guards against empty, off-topic, or truncated AI responses with automatic retry.
 - **No authentication**: Single-user scope for this assessment.
 - **Standalone Next.js output**: Enables containerised deployment without `node_modules`.
 - **React Query**: Handles server state, caching (30s stale time), and automatic refetching.
-- **Factory pattern**: `create_app()` enables dependency injection for testing with mocked Claude service.
+- **Factory pattern**: `create_app()` enables dependency injection for testing with mocked services.
+- **DATABASE_URL normalisation**: Automatically rewrites `postgresql://` to `postgresql+asyncpg://` so Railway's provided URL works without manual editing.
 
 ## Deployment
 
-The app is deployed with **Railway** (backend) and **Vercel** (frontend). Below are step-by-step instructions for a fresh deployment.
+The app is deployed with **Railway** (backend + PostgreSQL + Redis) and **Vercel** (frontend). Below are step-by-step instructions for a fresh deployment.
 
 ### Prerequisites
 
@@ -162,7 +323,11 @@ railway up --detach
 # Link the newly created service
 railway service <service-name>
 
-# Set environment variables
+# Add PostgreSQL and Redis plugins from the Railway dashboard
+# (Settings → New → Database → PostgreSQL / Redis)
+# Railway auto-injects DATABASE_URL and REDIS_URL
+
+# Set remaining environment variables
 railway variables set ANTHROPIC_API_KEY=<your-api-key>
 railway variables set MODEL_NAME=claude-haiku-4-5-20251001
 railway variables set MAX_TOKENS=1024
@@ -217,14 +382,16 @@ Railway will automatically redeploy with the new variable.
 
 **Backend (Railway)**
 
-| Variable          | Description                     | Example                            |
-|-------------------|---------------------------------|------------------------------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key             | `sk-ant-api03-...`                 |
-| `MODEL_NAME`      | Claude model to use             | `claude-haiku-4-5-20251001`        |
-| `MAX_TOKENS`      | Max response tokens             | `1024`                             |
-| `TEMPERATURE`     | Sampling temperature            | `0.7`                              |
-| `ALLOWED_ORIGINS` | CORS allowed origins            | `https://your-app.vercel.app`      |
-| `DEBUG`           | Enable debug logging            | `false`                            |
+| Variable            | Description                     | Example                            |
+|---------------------|---------------------------------|------------------------------------|
+| `ANTHROPIC_API_KEY` | Anthropic API key               | `sk-ant-api03-...`                 |
+| `MODEL_NAME`        | Claude model to use             | `claude-haiku-4-5-20251001`        |
+| `MAX_TOKENS`        | Max response tokens             | `1024`                             |
+| `TEMPERATURE`       | Sampling temperature            | `0.7`                              |
+| `DATABASE_URL`      | PostgreSQL connection string    | Auto-injected by Railway           |
+| `REDIS_URL`         | Redis connection string         | Auto-injected by Railway           |
+| `ALLOWED_ORIGINS`   | CORS allowed origins            | `https://your-app.vercel.app`      |
+| `DEBUG`             | Enable debug logging            | `false`                            |
 
 **Frontend (Vercel)**
 

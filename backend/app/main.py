@@ -15,8 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.exceptions import register_exception_handlers
 from app.routers import health, history, query
+from app.services.cache_service import CacheService
 from app.services.claude_service import ClaudeService
+from app.services.database import close_db, get_db_session, init_db
 from app.services.history_service import HistoryService
+from app.services.validation_service import ResponseValidationService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,21 +38,27 @@ def create_app() -> FastAPI:
 
     # Shared service singletons
     claude_service = ClaudeService(settings)
-    history_service = HistoryService()
+    validation_service = ResponseValidationService()
+    cache_service = CacheService(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         """Manage application lifespan events.
 
-        Startup: log service readiness.
-        Shutdown: (no-op for in-memory store — add cleanup here for real DBs).
+        Startup: initialise database, Redis, and log readiness.
+        Shutdown: close database and Redis connections.
         """
+        await init_db()
+        await cache_service.connect()
         logger.info(
-            "CloudAdvisor starting — model=%s, debug=%s",
+            "CloudAdvisor starting — model=%s, debug=%s, db=connected, redis=%s",
             settings.model_name,
             settings.debug,
+            "connected" if cache_service.is_connected else "unavailable",
         )
         yield
+        await cache_service.disconnect()
+        await close_db()
         logger.info("CloudAdvisor shutting down")
 
     app = FastAPI(
@@ -75,9 +84,15 @@ def create_app() -> FastAPI:
     )
 
     # Wire dependency overrides so routers receive real service instances
+    async def _get_history_service():
+        async for session in get_db_session():
+            yield HistoryService(session)
+
     app.dependency_overrides[query.get_claude_service] = lambda: claude_service
-    app.dependency_overrides[query.get_history_service] = lambda: history_service
-    app.dependency_overrides[history.get_history_service] = lambda: history_service
+    app.dependency_overrides[query.get_validation_service] = lambda: validation_service
+    app.dependency_overrides[query.get_cache_service] = lambda: cache_service
+    app.dependency_overrides[query.get_history_service] = _get_history_service
+    app.dependency_overrides[history.get_history_service] = _get_history_service
 
     # Register routers
     app.include_router(query.router, prefix="/api")

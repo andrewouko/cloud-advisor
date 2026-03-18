@@ -44,8 +44,8 @@ async def get_history(
     Returns:
         HistoryResponse with a list of conversations and pagination metadata.
     """
-    conversations = history_service.get_all(limit=limit, offset=offset)
-    total = history_service.count()
+    conversations = await history_service.get_all(limit=limit, offset=offset)
+    total = await history_service.count()
 
     logger.debug("Returning %d/%d history items", len(conversations), total)
 
@@ -61,7 +61,7 @@ async def get_history(
     "/history",
     status_code=204,
     summary="Clear conversation history",
-    description="Deletes all stored conversations from the in-memory store.",
+    description="Deletes all stored conversations.",
 )
 async def clear_history(
     history_service: HistoryService = Depends(get_history_service),
@@ -74,6 +74,6 @@ async def clear_history(
     Returns:
         204 No Content on success.
     """
-    history_service.clear()
+    await history_service.clear()
     logger.info("Conversation history cleared via API")
     return Response(status_code=204)

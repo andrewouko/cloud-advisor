@@ -161,3 +161,15 @@ body {
 .prose a {
   color: #1d4ed8 !important;
 }
+
+.prose pre {
+  background: #282c34 !important;
+  color: #abb2bf !important;
+  border-radius: 0.5rem;
+  padding: 1em;
+  overflow-x: auto;
+}
+
+.prose code {
+  color: inherit;
+}

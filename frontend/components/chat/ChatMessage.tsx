@@ -2,7 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { ChatMessage as ChatMessageType } from "@/types";
 import { formatTime } from "@/lib/utils";
 import { TypingIndicator } from "./TypingIndicator";
@@ -82,7 +82,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 if (match) {
                   return (
                     <SyntaxHighlighter
-                      style={oneLight}
+                      style={oneDark}
                       language={match[1]}
                       PreTag="div"
                       className="!rounded-lg !text-xs"

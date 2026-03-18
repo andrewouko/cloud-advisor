@@ -26,3 +26,4 @@ class QueryResponse(BaseModel):
     timestamp: datetime = Field(description="UTC timestamp of the response")
     model: str = Field(description="The Claude model that generated the response")
     tokens_used: int | None = Field(default=None, description="Total tokens consumed")
+    cached: bool = Field(default=False, description="Whether the response was served from cache")

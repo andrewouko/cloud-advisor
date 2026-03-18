@@ -1,6 +1,5 @@
 """Tests for POST /api/query."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -16,6 +15,7 @@ def test_query_success(client: TestClient) -> None:
     assert len(data["answer"]) > 0
     assert "timestamp" in data
     assert "model" in data
+    assert "cached" in data
 
 
 def test_query_empty_question_returns_400(client: TestClient) -> None:
@@ -56,3 +56,10 @@ def test_query_missing_question_field_returns_422(client: TestClient) -> None:
     """Missing required question field should return 422."""
     response = client.post("/api/query", json={})
     assert response.status_code == 422
+
+
+def test_query_cached_field_is_false_for_fresh(client: TestClient) -> None:
+    """Fresh responses should have cached=False."""
+    response = client.post("/api/query", json={"question": "What is GCP?"})
+    data = response.json()
+    assert data["cached"] is False

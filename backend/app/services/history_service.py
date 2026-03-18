@@ -1,54 +1,59 @@
-"""In-memory conversation history store.
+"""Conversation history store backed by PostgreSQL.
 
-Provides O(1) lookup with insertion-order preservation via OrderedDict.
-In a production system this would be backed by PostgreSQL or Redis.
+Provides persistent storage for conversation history with pagination,
+replacing the previous in-memory OrderedDict implementation.
 """
 
 import logging
-from collections import OrderedDict
 
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.conversation import Conversation
 from app.schemas.history import HistoryItem
 
 logger = logging.getLogger(__name__)
 
 
 class HistoryService:
-    """Thread-safe in-memory store for conversation history.
-
-    Items are stored in insertion order and automatically evicted when
-    the maximum capacity is reached (oldest item removed first).
+    """PostgreSQL-backed store for conversation history.
 
     Attributes:
-        _store: Ordered mapping of conversation ID to HistoryItem.
-        _max_items: Maximum number of conversations to retain in memory.
+        _session: The async SQLAlchemy session.
     """
 
-    def __init__(self, max_items: int = 100) -> None:
-        """Initialise the history store.
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
-        Args:
-            max_items: Maximum number of conversations to keep.
-                       Oldest entries are evicted when this limit is reached.
-        """
-        self._store: OrderedDict[str, HistoryItem] = OrderedDict()
-        self._max_items = max_items
-
-    def add(self, item: HistoryItem) -> None:
-        """Add a conversation to the history store.
-
-        If the store is at capacity, the oldest entry is removed first.
+    async def add(
+        self,
+        item: HistoryItem,
+        model: str = "",
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> None:
+        """Persist a conversation to PostgreSQL.
 
         Args:
             item: The conversation item to store.
+            model: The Claude model used.
+            input_tokens: Number of input tokens.
+            output_tokens: Number of output tokens.
         """
-        if len(self._store) >= self._max_items:
-            evicted_id, _ = self._store.popitem(last=False)
-            logger.debug("History capacity reached — evicted conversation %s", evicted_id)
+        conversation = Conversation(
+            id=item.id,
+            question=item.question,
+            answer=item.answer,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            timestamp=item.timestamp,
+        )
+        self._session.add(conversation)
+        await self._session.commit()
+        logger.debug("Stored conversation %s", item.id)
 
-        self._store[item.id] = item
-        logger.debug("Stored conversation %s (total: %d)", item.id, len(self._store))
-
-    def get_all(self, limit: int = 50, offset: int = 0) -> list[HistoryItem]:
+    async def get_all(self, limit: int = 50, offset: int = 0) -> list[HistoryItem]:
         """Return a paginated slice of conversation history (newest first).
 
         Args:
@@ -58,10 +63,26 @@ class HistoryService:
         Returns:
             A list of HistoryItem objects, newest first.
         """
-        all_items = list(reversed(self._store.values()))
-        return all_items[offset : offset + limit]
+        stmt = (
+            select(Conversation)
+            .order_by(Conversation.timestamp.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        rows = result.scalars().all()
 
-    def get_by_id(self, conversation_id: str) -> HistoryItem | None:
+        return [
+            HistoryItem(
+                id=row.id,
+                question=row.question,
+                answer=row.answer,
+                timestamp=row.timestamp,
+            )
+            for row in rows
+        ]
+
+    async def get_by_id(self, conversation_id: str) -> HistoryItem | None:
         """Retrieve a single conversation by its ID.
 
         Args:
@@ -70,14 +91,24 @@ class HistoryService:
         Returns:
             The HistoryItem if found, otherwise None.
         """
-        return self._store.get(conversation_id)
+        result = await self._session.get(Conversation, conversation_id)
+        if result is None:
+            return None
 
-    def clear(self) -> None:
+        return HistoryItem(
+            id=result.id,
+            question=result.question,
+            answer=result.answer,
+            timestamp=result.timestamp,
+        )
+
+    async def clear(self) -> None:
         """Remove all conversations from the store."""
-        count = len(self._store)
-        self._store.clear()
-        logger.info("History cleared — removed %d conversations", count)
+        result = await self._session.execute(delete(Conversation))
+        await self._session.commit()
+        logger.info("History cleared — removed %d conversations", result.rowcount)
 
-    def count(self) -> int:
+    async def count(self) -> int:
         """Return the total number of stored conversations."""
-        return len(self._store)
+        result = await self._session.execute(select(func.count(Conversation.id)))
+        return result.scalar_one()
