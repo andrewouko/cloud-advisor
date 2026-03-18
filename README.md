@@ -403,3 +403,13 @@ Railway will automatically redeploy with the new variable.
 | Variable              | Description          | Example                                          |
 |-----------------------|----------------------|--------------------------------------------------|
 | `NEXT_PUBLIC_API_URL` | Backend API base URL | `https://your-project-production.up.railway.app`  |
+
+## Potential Improvements
+
+- **Authentication and authorisation** — Add user login (e.g. OAuth via Google) to support per-user history, usage quotas, and role-based access. Currently the app is single-user with no auth, which limits it to demo/internal use.
+- **MCP integration for local data** — Integrate the [Model Context Protocol](https://modelcontextprotocol.io/) to let Claude access local knowledge bases, internal documentation, or company-specific infrastructure data. This would make CloudAdvisor context-aware for a specific organisation rather than providing only general advice.
+- **Streaming responses** — Replace the current request/response cycle with Server-Sent Events (SSE) so the UI renders tokens as they arrive. This would significantly improve perceived latency, especially for longer answers.
+- **Multi-turn conversations** — Currently each query is standalone with no memory of previous messages. Adding conversation context would allow follow-up questions like "Can you elaborate on step 3?" without restating the original topic.
+- **Token usage dashboard** — The database already stores `input_tokens` and `output_tokens` per conversation. An admin view could surface cost trends, usage patterns, and budget alerts.
+- **Conversation search** — Full-text search over conversation history using PostgreSQL's built-in `tsvector` indexing, allowing users to find past answers without scrolling through the history list.
+- **File and document upload** — Allow users to upload architecture diagrams, configuration files, or cloud bills for Claude to analyse and provide tailored recommendations.
