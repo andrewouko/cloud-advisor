@@ -301,7 +301,9 @@ npm test
 
 ## Deployment
 
-The app is deployed with **Railway** (backend + PostgreSQL + Redis) and **Vercel** (frontend). Below are step-by-step instructions for a fresh deployment.
+The app is deployed with **Railway** (backend + PostgreSQL + Redis) and **Vercel** (frontend). Deployments are triggered manually via CLI (`railway up`, `vercel --prod`) — there is no automatic deploy on push to `main`. This is intentional: the backend interacts with paid APIs (Anthropic) and provisioned databases, so deployments should be deliberate rather than triggered by every commit.
+
+Below are step-by-step instructions for a fresh deployment.
 
 ### Prerequisites
 
@@ -323,9 +325,12 @@ railway up --detach
 # Link the newly created service
 railway service <service-name>
 
-# Add PostgreSQL and Redis plugins from the Railway dashboard
-# (Settings → New → Database → PostgreSQL / Redis)
-# Railway auto-injects DATABASE_URL and REDIS_URL
+# Add PostgreSQL and Redis databases
+railway add -d postgres
+railway add -d redis
+
+# Link database URLs to the backend service via reference variables
+railway variables set 'DATABASE_URL=${{Postgres.DATABASE_URL}}' 'REDIS_URL=${{Redis.REDIS_URL}}'
 
 # Set remaining environment variables
 railway variables set ANTHROPIC_API_KEY=<your-api-key>
