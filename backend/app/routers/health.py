@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.services.database import engine
+from app.services import database as db_module
 
 router = APIRouter(tags=["health"])
 
@@ -43,9 +43,9 @@ async def health_check() -> HealthResponse:
 
     # Check database
     db_status = "unavailable"
-    if engine:
+    if db_module.engine:
         try:
-            async with engine.connect() as conn:
+            async with db_module.engine.connect() as conn:
                 await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
             db_status = "connected"
         except Exception:
