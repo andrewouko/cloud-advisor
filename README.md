@@ -92,6 +92,15 @@ docker compose up --build
 
 To stop everything: `docker compose down` (add `-v` to also remove database volumes).
 
+To reclaim all Docker resources (containers, images, volumes, and build cache) after you're done:
+
+```bash
+docker compose down -v
+docker system prune -af --volumes
+```
+
+> **Warning:** `docker system prune` removes **all** unused Docker resources on your machine, not just those from this project. If you have other Docker projects, use `docker compose down -v --rmi all` instead to only clean up CloudAdvisor resources.
+
 ### Option 2: Manual Setup
 
 Run PostgreSQL and Redis yourself (e.g. via Homebrew, native install, or standalone Docker containers), then start the backend and frontend separately.
